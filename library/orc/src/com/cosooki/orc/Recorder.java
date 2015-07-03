@@ -24,13 +24,15 @@ import android.media.MediaRecorder.VideoEncoder;
 import android.media.MediaRecorder.VideoSource;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.DisplayMetrics;
 import android.view.Surface;
 import android.view.WindowManager;
 
 public class Recorder {
-    
+
     private Context _context;
     private LocalBroadcastManager _localManager;
 
@@ -45,8 +47,10 @@ public class Recorder {
     private Timer _timeout;
     private WindowManager _windowManager;
     private MediaProjectionManager _projectionManager;
-    
+
     private AtomicBoolean _running;
+
+    private Handler _handler;
 
     /**
      * Create Recorder instance
@@ -54,6 +58,8 @@ public class Recorder {
      */
     public Recorder(Context context) {
         _context = context.getApplicationContext();
+        _handler = new Handler(Looper.getMainLooper());
+
         _running = new AtomicBoolean();
 
         _windowManager = (WindowManager) context.getSystemService(
@@ -61,13 +67,13 @@ public class Recorder {
         _projectionManager =  (MediaProjectionManager) context.getSystemService(
                 Context.MEDIA_PROJECTION_SERVICE);
     }
-    
+
     private boolean isRunning() {
         return _running.get();
     }
-    
+
     private void setRunning(boolean value) {
-       _running.set(value);
+        _running.set(value);
     }
 
     private void registerReceiver() {
@@ -81,7 +87,7 @@ public class Recorder {
         if (_localManager != null) {
             _localManager.unregisterReceiver(_localReceiver);
         }
-        
+
         _localManager = null;
     }
 
@@ -104,7 +110,7 @@ public class Recorder {
     };
 
     private void startRecordIntent() {
-    	try {
+        try {
             Intent intent = new Intent();
             intent.setComponent(new ComponentName(_context, RecordHelperActivity.class));            
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -115,9 +121,9 @@ public class Recorder {
 
         registerReceiver();
     }
-    
+
     private boolean checkRecordIntent(int resultCode, Intent data) {
-    	
+
         if (resultCode == Activity.RESULT_CANCELED) {
             callOnErrorListener(RecordError.USER_CANCELED, "User canceled.");
             return false;
@@ -128,24 +134,24 @@ public class Recorder {
 
     private void onStartRecordIntent(int resultCode, Intent data) {
 
-    	if (!checkRecordIntent(resultCode, data)) {
+        if (!checkRecordIntent(resultCode, data)) {
             return;
         }
 
         callOnCreateListener();
-        
+
         prepareRecorder();
-        
+
         createVirtualDisplay(resultCode, data);
 
         startRecorder();
     }
-    
+
     private void checkOption(RecordOption option) {
-    	if (checkNull(option)) {
+        if (checkNull(option)) {
             throwIAE("RecordOption is null");
         }
-    	// FIXME
+        // FIXME
         _option = option;
     }
 
@@ -156,7 +162,7 @@ public class Recorder {
     public void setListener(RecordListener listener) {
         _listener = listener;
     }
-    
+
     /**
      * start record
      * @param option
@@ -170,7 +176,7 @@ public class Recorder {
 
         startRecordIntent();
     }
-    
+
     /**
      * stop record
      * @param option
@@ -179,14 +185,14 @@ public class Recorder {
         if (!isRunning()) {
             throwISE("Recorder is not running");
         }
-        
+
         stopRecorder();
     }
 
     private void createVirtualDisplay(int resultCode, Intent data) {
 
         initProjection(resultCode, data);
-        
+
         DisplayInfo info = getDisplayInfo(_option);
         Surface surface = _recorder.getSurface();
         _display = _projection.createVirtualDisplay(
@@ -199,11 +205,11 @@ public class Recorder {
     }
 
     private void initProjection(int resultCode, Intent data) {
-    	_projection = _projectionManager.getMediaProjection(resultCode, data);
+        _projection = _projectionManager.getMediaProjection(resultCode, data);
 
-    	if (checkNull(_projection)) {
+        if (checkNull(_projection)) {
             callOnErrorListener(RecordError.UNKNOWN,
-            		"Can not get MediaProjection");
+                    "Can not get MediaProjection");
         }
     }
 
@@ -212,13 +218,13 @@ public class Recorder {
                 == PackageManager.PERMISSION_GRANTED) {
             return true;
         }
-        
+
         return false;
     }
 
     private void prepareRecorder() {
         _recorder = new MediaRecorder();
-        
+
         if (checkRecordAudio()) {
             _recorder.setAudioSource(AudioSource.MIC);
         }        
@@ -228,7 +234,7 @@ public class Recorder {
             _recorder.setAudioEncoder(AudioEncoder.AMR_NB);
         }
         _recorder.setVideoEncoder(VideoEncoder.H264);
-        
+
         DisplayInfo info = getDisplayInfo(_option);
         int frameRate = (_option != null) ? _option.getFrameRate() : 
             RecordOption.DEFAULT_FRAME_RATE;
@@ -241,36 +247,36 @@ public class Recorder {
         try {
             _recorder.prepare();
         } catch (Exception e) {
-        	callOnErrorListener(RecordError.PREPARE_ERROR,
-        			"Occured " + e.toString());
+            callOnErrorListener(RecordError.PREPARE_ERROR,
+                    "Occured " + e.toString());
         }
     }
-    
+
     private void startRecorder() {
         if (isRunning()) {
             return;
         }
-        
+
         _recorder.start();        
         setRunning(true);
 
         callOnStartListener();        
         startTimer();
     }
-    
+
     private void stopRecorder() {
         if (!isRunning()) {
             return;
         }
-        
+
         setRunning(false);
         stopTimer();
 
         _projection.stop();
         _recorder.stop();
-        
+
         callOnStopListener();
-        
+
         _recorder.release();
         _display.release();
 
@@ -318,41 +324,66 @@ public class Recorder {
 
     private void callOnCreateListener() {
         if (_listener != null) {
-            _listener.onCreate();
-        }
-    }
-    
-    private void callOnStartListener() {
-        if (_listener != null) {
-            _listener.onStart();
-        }
-    }
-    
-    private void callOnStopListener() {
-        if (_listener != null) {
-            _listener.onStop();
+            _handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    _listener.onCreate();
+                }
+            });
         }
     }
 
-    private void callOnErrorListener(int errorCode, String reason) {
+    private void callOnStartListener() {
         if (_listener != null) {
-            _listener.onError(errorCode, reason);
+            _handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    _listener.onStart();
+                }
+            });
         }
     }
-    
-    private void callOnCompletListener(String fileName) {
+
+    private void callOnStopListener() {
         if (_listener != null) {
-            _listener.onCompleted(fileName);
+            _handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    _listener.onStop();
+                }
+            });
         }
     }
-    
+
+    private void callOnErrorListener(final int errorCode, final String reason) {
+        if (_listener != null) {
+            _handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    _listener.onError(errorCode, reason);
+                }
+            });
+        }
+    }
+
+    private void callOnCompletListener(final String fileName) {
+        if (_listener != null) {
+            _handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    _listener.onCompleted(fileName);
+                }
+            });
+        }
+    }
+
     private void startTimer() {
         stopTimer();
-        
+
         _timeout = new Timer();
         _timeout.schedule(new TimeoutTask(), RecordOption.MAX_RECORD_TIME);
     }
-    
+
     private void stopTimer() {
         if (_timeout != null) {
             _timeout.cancel();
@@ -368,11 +399,11 @@ public class Recorder {
             }
         }
     }
-    
+
     private void throwISE(String message) {
         throw new IllegalStateException(message);
     }
-    
+
     private void throwIAE(String message) {
         throw new IllegalArgumentException(message);
     }

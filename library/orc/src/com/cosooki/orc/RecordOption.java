@@ -26,7 +26,7 @@ public class RecordOption {
     public static final int DEFAULT_FRAME_RATE                      = RECORD_FRAME_HIGH;    
     public static final int DEFAULT_BIT_RATE                        = 8 * 1000 * 1000;
     
-    public static final int MAX_RECORD_TIME                         = 60 * 1000;
+    public static final int MAX_RECORD_TIME                         = 30 * 1000;
     
     private static String getDefaultFileName(Context context) {
         File movieDir = Environment.getExternalStoragePublicDirectory(
